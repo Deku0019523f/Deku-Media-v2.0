@@ -369,8 +369,12 @@ def main():
                 logger.error("Token du bot non configuré. Arrêt.")
                 sys.exit(1)
             
-            # Continuer avec un avertissement pour les autres erreurs
-            input("Appuyez sur Entrée pour continuer malgré les avertissements...")
+            # Continuer automatiquement avec un avertissement (les avertissements
+            # restants sont non bloquants, ex: cookies manquants — le bot
+            # fonctionne quand même pour le contenu public). Pas d'input()
+            # ici : ça plante immédiatement sur un serveur non-interactif
+            # (Render, Railway, Docker...) avec EOFError.
+            logger.warning("Démarrage malgré les avertissements ci-dessus (non bloquants).")
         
         logger.info("✅ Configuration validée")
         
