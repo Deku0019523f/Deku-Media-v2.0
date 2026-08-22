@@ -55,7 +55,7 @@ POINTS_FOR_1_WEEK = 10
 POINTS_FOR_1_MONTH = 30
 
 # ==================== PAIEMENTS ====================
-PREMIUM_CHECKOUT_URL = "https://deku225.online/prd_nwy2l2/checkout"  # legacy, plus utilisé par le flux Premium
+PREMIUM_CHECKOUT_URL = "optionnel"  # legacy, plus utilisé par le flux Premium
 DONATION_STARS = [20, 50]  # Montants en Stars
 
 # ==================== PAIEMENTS AUTOMATIQUES (API Atelier) ====================
