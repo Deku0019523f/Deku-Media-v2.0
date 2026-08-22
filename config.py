@@ -12,9 +12,9 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 # ==================== CONFIGURATION BOT ====================
-BOT_TOKEN = "7940109461:AAHDvE5-s9j1dBS0maRDdwnHGlRZ8bGfixg"  # Token du bot @BotFather
-ADMIN_IDS = [1299831974]  # Liste des IDs administrateurs
-OWNER_USERNAME = "@Darkdeku225"  # Propriétaire du bot
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")  # Token du bot @BotFather — défini dans .env, JAMAIS en dur ici
+ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]  # IDs admin, séparés par des virgules dans .env
+OWNER_USERNAME = os.getenv("OWNER_USERNAME", "@Darkdeku225")  # Propriétaire du bot
 
 # ==================== CHEMINS ====================
 BASE_DIR = Path(__file__).parent
@@ -66,15 +66,17 @@ DONATION_STARS = [20, 50]  # Montants en Stars
 ATELIER_API_KEY = os.getenv("ATELIER_API_KEY", "")
 ATELIER_BASE_URL = "https://myateliers.store/api/public/v1"  # api.myateliers.store redirigeait ici (307) — on cible directement la bonne URL
 
-# 🔧 URL publique qui reçoit les webhooks de paiement (VPS: 180.149.199.253)
-# ⚠️ En HTTP simple (pas de nom de domaine ni TLS) : le trafic entre l'API
-# Atelier et votre VPS n'est pas chiffré. Le webhook n'étant de toute façon
-# jamais utilisé seul (on revérifie toujours via GET /v1/payments/{reference}
+# 🔧 À CONFIGURER : URL publique (HTTPS de préférence) qui reçoit les
+# webhooks de paiement, ex: "https://votre-domaine.com/webhooks/atelier"
+# ou "http://VOTRE_IP_VPS:8081/webhooks/atelier" en HTTP simple.
+# ⚠️ En HTTP simple (pas de nom de domaine ni TLS), le trafic entre l'API
+# Atelier et votre serveur n'est pas chiffré. Le webhook n'étant de toute
+# façon jamais utilisé seul (on revérifie toujours via GET /v1/payments/{reference}
 # avant de créditer le Premium), le risque est limité, mais si possible pointez
-# plus tard un nom de domaine + certificat TLS (Let's Encrypt) sur ce port.
+# un nom de domaine + certificat TLS (Let's Encrypt) sur ce port.
 # Le port WEBHOOK_SERVER_PORT (8081 par défaut) doit être ouvert dans le
-# pare-feu du VPS (ex: ufw allow 8081/tcp) pour qu'Atelier puisse l'atteindre.
-ATELIER_CALLBACK_URL = os.getenv("ATELIER_CALLBACK_URL", "http://180.149.199.253:8081/webhooks/atelier")
+# pare-feu du serveur (ex: ufw allow 8081/tcp) pour qu'Atelier puisse l'atteindre.
+ATELIER_CALLBACK_URL = os.getenv("ATELIER_CALLBACK_URL", "https://VOTRE-DOMAINE-OU-IP.example/webhooks/atelier")
 
 # Lien vers lequel l'utilisateur est redirigé après paiement
 ATELIER_RETURN_URL = os.getenv("ATELIER_RETURN_URL", "https://t.me/MediaDeku_bot")
