@@ -15,6 +15,7 @@ I can download videos from:
 • Facebook (videos, reels)
 • Pinterest
 • Twitter/X
+• And many more sites (Vimeo, Dailymotion, SoundCloud, Twitch, Reddit, etc.)!
 
 📤 **Simply send a link** to get started!
 
@@ -111,7 +112,7 @@ Invite your friends and earn points!
     "download_too_large": "❌ File too large (limit: 2 GB).",
     
     # Errors
-    "error_platform_not_supported": "❌ Platform not supported. Send a YouTube, TikTok, Instagram, Facebook, Pinterest or Twitter link.",
+    "error_platform_not_supported": "❌ Unsupported platform or invalid link.",
     "error_platform_disabled": "❌ This platform is temporarily disabled.",
     "error_invalid_url": "❌ Invalid URL. Please send a valid link.",
     "error_banned": "🚫 You are banned from this bot.",

@@ -31,8 +31,13 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user_data.get("lang", "fr")
     locale = importlib.import_module(f"locales.{lang}")
     
-    # Détecter la plateforme
-    is_supported, platform = platform_detector.is_supported(url)
+    # Détecter la plateforme (peut scanner ~1750 extracteurs yt-dlp en repli
+    # pour les plateformes non-vedettes : on l'exécute hors de la boucle
+    # asyncio pour ne pas bloquer les autres utilisateurs pendant ce temps)
+    loop = asyncio.get_event_loop()
+    is_supported, platform = await loop.run_in_executor(
+        None, platform_detector.is_supported, url
+    )
     
     if not is_supported:
         await update.message.reply_text(

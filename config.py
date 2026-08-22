@@ -96,6 +96,8 @@ DELETE_AFTER_SEND = 60  # Secondes avant suppression automatique
 MAX_FILE_SIZE_MB = 2000  # Limite Telegram pour bots
 
 # ==================== PLATEFORMES SUPPORTÉES ====================
+# "autres" : bascule globale pour le repli sur tous les extracteurs yt-dlp
+# (voir utils/platform_detector.py) — les ~1750 sites en plus des 6 vedettes.
 PLATFORMS_ENABLED = {
     "youtube": True,
     "tiktok": True,
@@ -103,6 +105,7 @@ PLATFORMS_ENABLED = {
     "facebook": True,
     "pinterest": True,
     "twitter": True,
+    "autres": True,
 }
 
 # ==================== YT-DLP OPTIONS ====================

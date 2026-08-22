@@ -8,7 +8,7 @@ Développé par [@Darkdeku225](https://t.me/Darkdeku225).
 
 ## ✨ Fonctionnalités
 
-- **Téléchargement multiplateforme** via [yt-dlp](https://github.com/yt-dlp/yt-dlp) : YouTube (vidéos & shorts), TikTok, Instagram (reels, posts, stories), Facebook (vidéos, reels), Pinterest, Twitter/X
+- **Téléchargement multiplateforme** via [yt-dlp](https://github.com/yt-dlp/yt-dlp) : YouTube (vidéos & shorts), TikTok, Instagram (reels, posts, stories), Facebook (vidéos, reels), Pinterest, Twitter/X — **et environ 1750 autres sites supportés par yt-dlp en repli automatique** (Vimeo, Dailymotion, SoundCloud, Twitch, Reddit, etc.), activable/désactivable globalement depuis le panneau admin
 - **Abonnement Premium** : téléchargements illimités, qualité jusqu'à 4K, pas de cooldown
 - **Paiement automatique** des abonnements via l'[API Atelier](https://myateliers.store/docs/api) (Mobile Money, carte bancaire) — génération du lien de paiement, vérification du statut, webhook, et activation automatique du Premium
 - **Programme de parrainage** : points par ami invité, convertibles en jours de Premium
@@ -152,4 +152,4 @@ Le panneau (`/admin`) donne aussi accès aux statistiques, à la liste des paiem
 
 ## 📄 Licence
 
-Aucune licence open-source explicite — tous droits réservés à [@Darkdeku225](https://t.me/Darkdeku225).
+Voir [LICENSE](./LICENSE) — tous droits réservés à [@Darkdeku225](https://t.me/Darkdeku225). Le code est visible publiquement à titre de démonstration, mais aucune réutilisation n'est autorisée sans accord préalable.

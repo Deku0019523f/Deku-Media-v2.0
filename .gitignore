@@ -9,7 +9,8 @@ __pycache__/
 
 # Données runtime (comptes réels, sessions, logs)
 database/
-cookies/
+cookies/*
+!cookies/README.md
 users/
 *.log
 downloads/

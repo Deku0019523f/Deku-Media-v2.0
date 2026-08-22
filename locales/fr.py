@@ -15,6 +15,7 @@ Je peux télécharger des vidéos depuis :
 • Facebook (vidéos, reels)
 • Pinterest
 • Twitter/X
+• Et bien d'autres sites (Vimeo, Dailymotion, SoundCloud, Twitch, Reddit, etc.) !
 
 📤 **Envoyez simplement un lien** pour commencer !
 
@@ -111,7 +112,7 @@ Invitez vos amis et gagnez des points !
     "download_too_large": "❌ Fichier trop volumineux (limite : 2 Go).",
     
     # Erreurs
-    "error_platform_not_supported": "❌ Plateforme non supportée. Envoyez un lien YouTube, TikTok, Instagram, Facebook, Pinterest ou Twitter.",
+    "error_platform_not_supported": "❌ Plateforme non supportée ou lien invalide.",
     "error_platform_disabled": "❌ Cette plateforme est temporairement désactivée.",
     "error_invalid_url": "❌ URL invalide. Veuillez envoyer un lien valide.",
     "error_banned": "🚫 Vous êtes banni de ce bot.",
