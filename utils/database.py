@@ -3,7 +3,7 @@
 Gestion de la base de données SQLite
 """
 import aiosqlite
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from config import DATABASE_PATH
 
@@ -64,6 +64,31 @@ class Database:
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     paid_at TEXT,
                     FOREIGN KEY (user_id) REFERENCES users (user_id)
+                )
+            """)
+            
+            # Table codes de connexion au site web (vérification d'identité Telegram)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS login_codes (
+                    user_id INTEGER PRIMARY KEY,
+                    code TEXT,
+                    attempts INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TEXT
+                )
+            """)
+            
+            # Table liens de téléchargement direct (fichiers >50 Mo, ou via la page web)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS download_links (
+                    token TEXT PRIMARY KEY,
+                    user_id INTEGER,
+                    file_path TEXT,
+                    filename TEXT,
+                    status TEXT DEFAULT 'pending',
+                    error TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TEXT
                 )
             """)
             
@@ -225,6 +250,93 @@ class Database:
             await db.commit()
             return cursor.rowcount > 0
     
+    async def create_login_code(self, user_id: int, code: str, expires_in_seconds: int):
+        """Crée/remplace le code de connexion en attente pour un utilisateur"""
+        expires_at = (datetime.now() + timedelta(seconds=expires_in_seconds)).isoformat()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO login_codes (user_id, code, attempts, created_at, expires_at)
+                VALUES (?, ?, 0, CURRENT_TIMESTAMP, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    code = excluded.code, attempts = 0,
+                    created_at = CURRENT_TIMESTAMP, expires_at = excluded.expires_at
+            """, (user_id, code, expires_at))
+            await db.commit()
+
+    async def get_login_code(self, user_id: int) -> Optional[Dict]:
+        """Récupère le code de connexion en attente d'un utilisateur"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM login_codes WHERE user_id = ?", (user_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def increment_login_code_attempts(self, user_id: int):
+        """Incrémente le nombre d'essais pour un code (anti brute-force)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE login_codes SET attempts = attempts + 1 WHERE user_id = ?", (user_id,)
+            )
+            await db.commit()
+
+    async def delete_login_code(self, user_id: int):
+        """Supprime le code de connexion (après usage ou nouvelle demande)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM login_codes WHERE user_id = ?", (user_id,))
+            await db.commit()
+
+    async def create_download_link(self, token: str, user_id: int, expires_in_seconds: int,
+                                    file_path: str = None, filename: str = None, status: str = "pending"):
+        """Crée un lien de téléchargement direct (fichier >50 Mo, ou page web)"""
+        expires_at = (datetime.now() + timedelta(seconds=expires_in_seconds)).isoformat()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO download_links (token, user_id, file_path, filename, status, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (token, user_id, file_path, filename, status, expires_at))
+            await db.commit()
+
+    async def get_download_link(self, token: str) -> Optional[Dict]:
+        """Récupère un lien de téléchargement par son token"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM download_links WHERE token = ?", (token,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def update_download_link(self, token: str, status: str, file_path: str = None,
+                                    filename: str = None, error: str = None):
+        """Met à jour le statut d'un lien (pending -> ready/error)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE download_links
+                SET status = ?, file_path = COALESCE(?, file_path),
+                    filename = COALESCE(?, filename), error = ?
+                WHERE token = ?
+            """, (status, file_path, filename, error, token))
+            await db.commit()
+
+    async def delete_download_link(self, token: str):
+        """Supprime un lien (après usage ou expiration)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM download_links WHERE token = ?", (token,))
+            await db.commit()
+
+    async def get_expired_download_links(self) -> List[Dict]:
+        """Retourne les liens expirés, pour nettoyage périodique"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM download_links WHERE expires_at < ?",
+                (datetime.now().isoformat(),)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
     async def add_payment_record(self, user_id: int, amount: int, currency: str, payment_type: str):
         """Ajoute une ligne dans l'historique des paiements validés"""
         async with aiosqlite.connect(self.db_path) as db:

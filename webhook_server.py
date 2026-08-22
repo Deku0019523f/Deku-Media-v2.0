@@ -11,6 +11,7 @@ faut renseigner dans config.ATELIER_CALLBACK_URL.
 import logging
 from aiohttp import web
 from utils.premium_payments import grant_premium_if_paid
+from webapp import register_webapp_routes
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ def create_webhook_app(bot) -> web.Application:
     app["bot"] = bot
     app.router.add_post("/webhooks/atelier", handle_atelier_webhook)
     app.router.add_get("/health", handle_health)
+    register_webapp_routes(app)
     return app
 
 

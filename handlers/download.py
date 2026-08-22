@@ -11,9 +11,13 @@ from utils.user_manager import user_manager
 from utils.downloader import downloader
 from utils.limits import limit_checker
 from utils.database import db
-from config import DELETE_AFTER_SEND, SUPPORT_CHANNEL, ADMIN_IDS
+from config import (
+    DELETE_AFTER_SEND, SUPPORT_CHANNEL, ADMIN_IDS,
+    TELEGRAM_UPLOAD_LIMIT_MB, DOWNLOAD_LINK_EXPIRY, PUBLIC_BASE_URL
+)
 import importlib
 import asyncio
+import secrets
 import os
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -257,15 +261,41 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Déterminer le type d'envoi
             file_extension = file_path.suffix.lower()
             
-            # Envoyer le fichier
             caption_text = (
                 f"✅ {locale.get_text('download_success')}\n"
                 f"📦 Taille: {size_text}\n"
                 f"📺 Plateforme: {platform.capitalize()}"
             )
             
+            if file_size_mb > TELEGRAM_UPLOAD_LIMIT_MB:
+                # Au-delà de la limite réelle de l'API Bot Telegram (50 Mo) :
+                # envoyer le fichier échouerait. On génère plutôt un lien de
+                # téléchargement direct (servi par webapp.py) et on l'envoie
+                # à la place du fichier. Le fichier n'est PAS supprimé tout
+                # de suite : il reste disponible jusqu'à expiration du lien
+                # (nettoyage périodique, voir utils/scheduler.py).
+                token = secrets.token_urlsafe(24)
+                await db.create_download_link(
+                    token, user_id, DOWNLOAD_LINK_EXPIRY,
+                    file_path=str(file_path), filename=file_path.name, status="ready"
+                )
+                download_url = f"{PUBLIC_BASE_URL}/dl/{token}"
+                expiry_minutes = DOWNLOAD_LINK_EXPIRY // 60
+
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"{caption_text}\n\n"
+                        f"📎 Fichier trop volumineux pour un envoi direct sur Telegram "
+                        f"(limite : {TELEGRAM_UPLOAD_LIMIT_MB} Mo).\n\n"
+                        f"🔗 Téléchargement direct :\n{download_url}\n\n"
+                        f"⏱ Lien valable {expiry_minutes} minutes."
+                    ),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            
             # Envoyer comme vidéo ou document selon la taille et l'extension
-            if file_size_mb <= 50 and file_extension in ['.mp4', '.mkv', '.avi', '.mov', '.webm']:
+            elif file_size_mb <= 50 and file_extension in ['.mp4', '.mkv', '.avi', '.mov', '.webm']:
                 try:
                     with open(file_path, 'rb') as video_file:
                         await context.bot.send_video(
@@ -313,8 +343,12 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
             
-            # Planifier la suppression du fichier
-            asyncio.create_task(downloader.cleanup_file(file_path, DELETE_AFTER_SEND))
+            # Planifier la suppression du fichier — sauf s'il est servi via
+            # lien direct (>TELEGRAM_UPLOAD_LIMIT_MB) : dans ce cas il doit
+            # rester disponible jusqu'à l'expiration du lien (nettoyage
+            # périodique dans utils/scheduler.py, pas ici).
+            if file_size_mb <= TELEGRAM_UPLOAD_LIMIT_MB:
+                asyncio.create_task(downloader.cleanup_file(file_path, DELETE_AFTER_SEND))
             
         except Exception as e:
             error_message = str(e)
@@ -372,7 +406,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == locale.get_text("menu_support") or text == "🛟 Soutien":
         await update.message.reply_text(
             f"🛟 **Besoin d'aide ?**\n\n"
-            f"Rejoignez notre canal de support :\n{SUPPORT_CHANNEL}",
+            f"Rejoignez notre canal de support :\n{SUPPORT_CHANNEL}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🌐 *Nos sites :*\n"
+            f"🔸 *Premium225.shop* — plateforme de vente en ligne\n"
+            f"🔸 *Boostapi.store* — abonnés, likes & vues\n"
+            f"🔸 *Mrateliers.store* — crée ta boutique en ligne\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━",
             parse_mode=ParseMode.MARKDOWN
         )
     

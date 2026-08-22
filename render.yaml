@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: deku-media-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    healthCheckPath: /health
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: BOT_USERNAME
+        sync: false
+      - key: ATELIER_API_KEY
+        sync: false
+      - key: ATELIER_CALLBACK_URL
+        sync: false
+      - key: ATELIER_RETURN_URL
+        sync: false
+      - key: PREMIUM_PRICE_XOF
+        value: "2000"
+      - key: WEBAPP_SECRET_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: "3.12.0"

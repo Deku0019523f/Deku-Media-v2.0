@@ -4,7 +4,9 @@ Planificateur de tâches automatiques
 """
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime
+from pathlib import Path
 import json
 import asyncio
 
@@ -46,6 +48,29 @@ class BotScheduler:
             
         except Exception as e:
             print(f"❌ Erreur dans reset_daily_limits: {e}")
+
+    async def cleanup_expired_download_links(self):
+        """Supprime les liens de téléchargement direct expirés et leurs fichiers"""
+        try:
+            from utils.database import db
+
+            expired = await db.get_expired_download_links()
+            for link in expired:
+                file_path = link.get("file_path")
+                if file_path:
+                    try:
+                        path = Path(file_path)
+                        if path.exists():
+                            path.unlink()
+                    except Exception as e:
+                        print(f"Erreur suppression fichier {file_path}: {e}")
+                await db.delete_download_link(link["token"])
+
+            if expired:
+                print(f"🧹 {len(expired)} lien(s) de téléchargement expiré(s) nettoyé(s)")
+
+        except Exception as e:
+            print(f"❌ Erreur dans cleanup_expired_download_links: {e}")
     
     def start(self):
         """Démarre le planificateur"""
@@ -57,6 +82,15 @@ class BotScheduler:
                 id="daily_reset",
                 replace_existing=True,
                 misfire_grace_time=3600  # 1 heure de tolérance
+            )
+
+            # Nettoyage des liens de téléchargement expirés, toutes les 15 minutes
+            self.scheduler.add_job(
+                self.cleanup_expired_download_links,
+                IntervalTrigger(minutes=15),
+                id="cleanup_download_links",
+                replace_existing=True,
+                misfire_grace_time=600
             )
             
             self.scheduler.start()

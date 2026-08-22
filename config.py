@@ -84,16 +84,44 @@ ATELIER_RETURN_URL = os.getenv("ATELIER_RETURN_URL", "https://t.me/MediaDeku_bot
 # 🔧 À CONFIGURER : prix de l'abonnement Premium en Francs CFA (XOF, entier sans décimales)
 PREMIUM_PRICE_XOF = int(os.getenv("PREMIUM_PRICE_XOF", "2000"))
 
-# Serveur HTTP interne qui reçoit les webhooks Atelier (à exposer via reverse proxy)
+# Serveur HTTP interne (webhooks Atelier + page web de téléchargement).
+# Sur Render/Railway/Heroku, la plateforme impose son propre port via $PORT :
+# on le respecte en priorité, sinon on retombe sur WEBHOOK_SERVER_PORT (VPS).
 WEBHOOK_SERVER_HOST = os.getenv("WEBHOOK_SERVER_HOST", "0.0.0.0")
-WEBHOOK_SERVER_PORT = int(os.getenv("WEBHOOK_SERVER_PORT", "8081"))
+WEBHOOK_SERVER_PORT = int(os.getenv("PORT", os.getenv("WEBHOOK_SERVER_PORT", "8081")))
+
+# ==================== APPLICATION WEB (page de téléchargement) ====================
+# 🔧 À CONFIGURER : URL publique complète du service (sans slash final), ex:
+# "https://mon-bot.onrender.com", "https://mon-bot.up.railway.app", ou
+# "http://VOTRE_IP_OU_DOMAINE:8081" sur un VPS.
+# Render et Railway exposent automatiquement leur URL via ces variables ;
+# on les détecte pour éviter une config manuelle en plus sur ces plateformes.
+PUBLIC_BASE_URL = (
+    os.getenv("PUBLIC_BASE_URL")
+    or (f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}" if os.getenv("RENDER_EXTERNAL_HOSTNAME") else None)
+    or (f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}" if os.getenv("RAILWAY_PUBLIC_DOMAIN") else None)
+    or "http://localhost:8081"
+)
+
+# Nom d'utilisateur du bot (sans @), requis par le widget de connexion Telegram
+BOT_USERNAME = os.getenv("BOT_USERNAME", "MediaDeku_bot")
+
+# Clé de signature des sessions web (cookie de connexion). Générez-en une avec :
+# python3 -c "import secrets; print(secrets.token_hex(32))"
+WEBAPP_SECRET_KEY = os.getenv("WEBAPP_SECRET_KEY", "")
+
+# Taille (Mo) au-delà de laquelle le bot n'essaie plus d'envoyer le fichier
+# directement sur Telegram (limite réelle de l'API Bot Telegram standard :
+# 50 Mo) et génère à la place un lien de téléchargement direct.
+TELEGRAM_UPLOAD_LIMIT_MB = 50
 
 # ==================== SUPPORT & COMMUNAUTÉ ====================
 SUPPORT_CHANNEL = "https://t.me/connexiontoutreseaus"
 
 # ==================== TÉLÉCHARGEMENT ====================
-DELETE_AFTER_SEND = 60  # Secondes avant suppression automatique
-MAX_FILE_SIZE_MB = 2000  # Limite Telegram pour bots
+DELETE_AFTER_SEND = 60  # Secondes avant suppression automatique (fichiers envoyés directement sur Telegram)
+MAX_FILE_SIZE_MB = 2000  # Taille maximale acceptée (au-delà : refusé, même en lien direct)
+DOWNLOAD_LINK_EXPIRY = 3600  # Secondes de validité d'un lien de téléchargement direct (>50 Mo)
 
 # ==================== PLATEFORMES SUPPORTÉES ====================
 # "autres" : bascule globale pour le repli sur tous les extracteurs yt-dlp
