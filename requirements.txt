@@ -1,0 +1,33 @@
+# Bot Telegram
+python-telegram-bot==20.8
+python-telegram-bot[job-queue]==20.8
+
+# Téléchargement vidéos
+yt-dlp>=2025.12.08
+
+# Base de données
+aiosqlite>=0.20.0
+
+# Traitement d'images
+Pillow>=10.0.0
+
+# Requêtes HTTP
+requests>=2.31.0
+
+# Client HTTP async (API Atelier) + serveur webhook de paiement
+aiohttp>=3.9.0
+
+# Chargement du fichier .env
+python-dotenv>=1.0.0
+
+# Gestion des dates
+python-dateutil>=2.8.2
+
+# Fichiers asynchrones
+aiofiles>=23.2.1
+
+# Planificateur de tâches
+APScheduler>=3.10.4
+
+# Utilitaires
+asyncio>=3.4.3
