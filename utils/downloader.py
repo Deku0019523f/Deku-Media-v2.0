@@ -5,6 +5,7 @@ Support: YouTube, TikTok, Instagram, Facebook, Pinterest, Twitter/X
 """
 import yt_dlp
 import asyncio
+import logging
 import requests
 from pathlib import Path
 from typing import Dict, Optional, List
@@ -12,6 +13,8 @@ from config import (
     COOKIES_MAP, DOWNLOADS_DIR, YTDLP_BASE_OPTIONS,
     MAX_FILE_SIZE_MB, NORMAL_MAX_QUALITY_YOUTUBE, PREMIUM_MAX_QUALITY
 )
+
+logger = logging.getLogger(__name__)
 
 class TikTokAPI:
     """API alternative pour TikTok - TikWM.com (Gratuit)"""
@@ -324,9 +327,9 @@ class Downloader:
                 if success and output_path.exists():
                     return output_path
                 else:
-                    print("⚠️  API TikTok échouée, essai yt-dlp...")
+                    logger.warning(f"API TikTok échouée (user={user_id}), essai yt-dlp en repli...")
             except Exception as e:
-                print(f"⚠️  Erreur API TikTok: {e}, essai yt-dlp...")
+                logger.warning(f"Erreur API TikTok: {e}, essai yt-dlp en repli...")
         
         # Fallback : yt-dlp pour toutes les plateformes
         try:
@@ -346,12 +349,18 @@ class Downloader:
             if downloaded_files:
                 return max(downloaded_files, key=lambda p: p.stat().st_mtime)
             
+            # yt-dlp n'a levé aucune exception, mais aucun fichier ne correspond
+            # au motif attendu : cas silencieux à surveiller explicitement
+            # (ex: max_filesize dépassé, format introuvable, fichier écrit
+            # ailleurs). Sans ce log, cette situation ne laissait AUCUNE trace.
+            logger.warning(
+                f"yt-dlp n'a levé aucune erreur mais aucun fichier '{user_id}_*' "
+                f"trouvé dans {self.downloads_dir} (plateforme={platform}, url={url})"
+            )
             return None
         
         except Exception as e:
-            print(f"Erreur téléchargement ({platform}): {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception(f"Erreur téléchargement (plateforme={platform}, url={url}, user={user_id})")
             return None
     
     async def cleanup_file(self, file_path: Path, delay: int = 20):

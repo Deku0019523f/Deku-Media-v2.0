@@ -71,6 +71,26 @@ class BotScheduler:
 
         except Exception as e:
             print(f"❌ Erreur dans cleanup_expired_download_links: {e}")
+
+    async def self_ping(self):
+        """
+        Auto-ping périodique sur /health, pour éviter la mise en veille des
+        plans gratuits (Render endort un service web après ~15 min sans
+        requête entrante). Inoffensif ailleurs (VPS, Railway...) : ça se
+        contente de vérifier que le serveur répond.
+        """
+        try:
+            import aiohttp
+            from config import PUBLIC_BASE_URL
+
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                async with session.get(f"{PUBLIC_BASE_URL}/health") as resp:
+                    if resp.status == 200:
+                        print(f"💓 Keep-alive OK ({PUBLIC_BASE_URL}/health)")
+                    else:
+                        print(f"⚠️ Keep-alive : statut inattendu {resp.status}")
+        except Exception as e:
+            print(f"⚠️ Keep-alive échoué (pas forcément grave, ex: en dev local) : {e}")
     
     def start(self):
         """Démarre le planificateur"""
@@ -91,6 +111,16 @@ class BotScheduler:
                 id="cleanup_download_links",
                 replace_existing=True,
                 misfire_grace_time=600
+            )
+
+            # Auto-ping toutes les 10 minutes (< 15 min = seuil de mise en
+            # veille des plans gratuits Render)
+            self.scheduler.add_job(
+                self.self_ping,
+                IntervalTrigger(minutes=10),
+                id="self_ping",
+                replace_existing=True,
+                misfire_grace_time=120
             )
             
             self.scheduler.start()

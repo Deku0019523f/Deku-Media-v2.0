@@ -4,7 +4,7 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    startCommand: python -u bot.py
     healthCheckPath: /health
     envVars:
       - key: BOT_TOKEN
@@ -25,3 +25,5 @@ services:
         generateValue: true
       - key: PYTHON_VERSION
         value: "3.12.0"
+      - key: PYTHONUNBUFFERED
+        value: "1"
