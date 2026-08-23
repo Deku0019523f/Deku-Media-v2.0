@@ -26,7 +26,7 @@ from aiohttp import web
 
 from config import PUBLIC_BASE_URL, DOWNLOAD_LINK_EXPIRY, MAX_FILE_SIZE_MB
 from utils.platform_detector import platform_detector
-from utils.downloader import downloader
+from utils.downloader import downloader, download_progress
 from utils.database import db
 
 logger = logging.getLogger(__name__)
@@ -134,6 +134,22 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
     vertical-align: middle; margin-right: 6px;
   }}
   @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+
+  .progress-box {{ text-align: left; padding: 4px 2px; }}
+  .progress-label {{ font-size: 0.88rem; color: #d7d9de; margin-bottom: 8px; }}
+  .progress-label b {{ color: #fff; }}
+  .progress-track {{
+    width: 100%; height: 10px; background: #0e1015; border-radius: 999px;
+    overflow: hidden; border: 1px solid #262a35;
+  }}
+  .progress-fill {{
+    height: 100%; background: linear-gradient(90deg, #3390ec, #5aa9f5);
+    border-radius: 999px; transition: width .4s ease;
+  }}
+  .progress-meta {{
+    display: flex; justify-content: space-between; margin-top: 8px;
+    font-size: 0.76rem; color: #8b8f99;
+  }}
 
   .preview {{ display: flex; gap: 12px; margin-bottom: 16px; }}
   .preview img {{
@@ -313,13 +329,51 @@ async function pollStatus(token, dlStatus, btn) {{
     dlStatus.appendChild(a);
     btn.style.display = 'none';
   }} else if (data.status === 'error') {{
+    dlStatus.innerHTML = '';
     dlStatus.textContent = '❌ ' + (data.error || 'Échec du téléchargement.');
     dlStatus.className = 'status-line err';
     btn.disabled = false;
   }} else {{
-    dlStatus.innerHTML = '<span class="spinner"></span> Téléchargement en cours...';
-    setTimeout(() => pollStatus(token, dlStatus, btn), 2000);
+    renderProgress(dlStatus, data.progress || {{status: 'pending'}});
+    setTimeout(() => pollStatus(token, dlStatus, btn), 1500);
   }}
+}}
+
+function renderProgress(container, p) {{
+  container.className = 'status-line';
+
+  if (p.status === 'processing') {{
+    container.innerHTML = `
+      <div class="progress-box">
+        <div class="progress-label"><span class="spinner"></span> Finalisation (fusion audio/vidéo)...</div>
+      </div>`;
+    return;
+  }}
+
+  if (p.status !== 'downloading' || p.percent === null || p.percent === undefined) {{
+    container.innerHTML = `
+      <div class="progress-box">
+        <div class="progress-label"><span class="spinner"></span> Préparation du téléchargement...</div>
+      </div>`;
+    return;
+  }}
+
+  const pct = Math.max(0, Math.min(100, p.percent));
+  const sizeInfo = (p.downloaded_mb != null && p.total_mb)
+    ? `${{p.downloaded_mb}} Mo / ${{p.total_mb}} Mo`
+    : (p.downloaded_mb != null ? `${{p.downloaded_mb}} Mo` : '');
+
+  container.innerHTML = `
+    <div class="progress-box">
+      <div class="progress-label">⬇️ Téléchargement... <b>${{pct}}%</b></div>
+      <div class="progress-track"><div class="progress-fill" style="width:${{pct}}%"></div></div>
+      <div class="progress-meta">
+        <span>${{sizeInfo}}</span>
+        <span>${{p.speed ? '🚀 ' + p.speed : ''}}</span>
+        <span>${{p.eta ? '⏱ ' + p.eta : ''}}</span>
+      </div>
+    </div>`;
+}}
 }}
 </script>
 """
@@ -374,7 +428,9 @@ async def _process_web_download(token: str, url: str, platform: str, quality: st
     try:
         # Pas d'identité Telegram ici : on utilise un identifiant technique
         # neutre pour le nom de fichier temporaire (pas de compteurs/limites).
-        file_path = await downloader.download_video(url, platform, quality, f"web_{token[:8]}")
+        file_path = await downloader.download_video(
+            url, platform, quality, f"web_{token[:8]}", progress_key=token
+        )
 
         if not file_path or not file_path.exists():
             await db.update_download_link(token, status="error", error="Fichier introuvable après téléchargement.")
@@ -394,6 +450,8 @@ async def _process_web_download(token: str, url: str, platform: str, quality: st
     except Exception as e:
         logger.exception(f"Échec téléchargement web (token={token})")
         await db.update_download_link(token, status="error", error=str(e)[:200])
+    finally:
+        download_progress.pop(token, None)
 
 
 async def handle_api_download(request: web.Request) -> web.Response:
@@ -440,7 +498,9 @@ async def handle_api_status(request: web.Request) -> web.Response:
         return web.json_response({"status": "ready", "download_url": f"{PUBLIC_BASE_URL}/dl/{token}"})
     if link["status"] == "error":
         return web.json_response({"status": "error", "error": link.get("error")})
-    return web.json_response({"status": "pending"})
+
+    progress = download_progress.get(token) or {"status": "pending"}
+    return web.json_response({"status": "pending", "progress": progress})
 
 
 async def handle_download_file(request: web.Request) -> web.Response:

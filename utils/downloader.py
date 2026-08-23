@@ -16,6 +16,29 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# Progression des téléchargements en cours, tenue en mémoire (clé -> dict).
+# Alimentée par le progress_hook de yt-dlp (appelé depuis un thread via
+# run_in_executor — de simples affectations de dict restent sûres sous le
+# GIL, pas besoin de verrou), lue par l'endpoint /api/status de la page web.
+download_progress: Dict[str, dict] = {}
+
+
+def _format_speed(bytes_per_sec) -> Optional[str]:
+    if not bytes_per_sec:
+        return None
+    mb_s = bytes_per_sec / (1024 * 1024)
+    if mb_s >= 1:
+        return f"{mb_s:.1f} Mo/s"
+    return f"{bytes_per_sec / 1024:.0f} Ko/s"
+
+
+def _format_eta(seconds) -> Optional[str]:
+    if seconds is None:
+        return None
+    seconds = int(seconds)
+    m, s = divmod(seconds, 60)
+    return f"{m}:{s:02d}" if m else f"{s}s"
+
 class TikTokAPI:
     """API alternative pour TikTok - TikWM.com (Gratuit)"""
     
@@ -369,10 +392,35 @@ class Downloader:
         return formats
     
     async def download_video(self, url: str, platform: str, 
-                           quality: str, user_id: int) -> Optional[Path]:
+                           quality: str, user_id, progress_key: str = None) -> Optional[Path]:
         """
         Télécharge une vidéo avec yt-dlp ou API alternative (TikTok)
+
+        progress_key : si fourni, la progression (%, vitesse, ETA) est
+        publiée dans download_progress[progress_key] au fil du téléchargement
+        (utilisé par la page web pour un suivi détaillé).
         """
+        if progress_key:
+            download_progress[progress_key] = {"status": "downloading", "percent": 0}
+
+        def progress_hook(d):
+            if not progress_key:
+                return
+            if d.get('status') == 'downloading':
+                downloaded = d.get('downloaded_bytes', 0)
+                total = d.get('total_bytes') or d.get('total_bytes_estimate')
+                percent = round(downloaded / total * 100, 1) if total else None
+                download_progress[progress_key] = {
+                    "status": "downloading",
+                    "percent": percent,
+                    "downloaded_mb": round(downloaded / (1024 * 1024), 1),
+                    "total_mb": round(total / (1024 * 1024), 1) if total else None,
+                    "speed": _format_speed(d.get('speed')),
+                    "eta": _format_eta(d.get('eta')),
+                }
+            elif d.get('status') == 'finished':
+                download_progress[progress_key] = {"status": "processing", "percent": 100}
+
         # ✅ TIKTOK : Essayer l'API EN PREMIER
         if platform == "tiktok":
             print("🎵 TikTok détecté - Tentative API...")
@@ -383,6 +431,8 @@ class Downloader:
             try:
                 success = await TikTokAPI.download(url, output_path)
                 if success and output_path.exists():
+                    if progress_key:
+                        download_progress[progress_key] = {"status": "processing", "percent": 100}
                     return output_path
                 else:
                     logger.warning(f"API TikTok échouée (user={user_id}), essai yt-dlp en repli...")
@@ -395,6 +445,8 @@ class Downloader:
             output_path = str(self.downloads_dir / filename)
             
             options = self._build_ytdlp_options(platform, quality, output_path)
+            if progress_key:
+                options['progress_hooks'] = [progress_hook]
             
             loop = asyncio.get_event_loop()
             def download():
