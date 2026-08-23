@@ -274,7 +274,7 @@ class Downloader:
             }
         
         except Exception as e:
-            print(f"Erreur extraction info ({platform}): {e}")
+            logger.exception(f"Erreur extraction info (plateforme={platform}, url={url})")
             return None
     
     def _extract_formats(self, info: Dict, platform: str) -> List[Dict]:

@@ -23,7 +23,7 @@ from telegram.ext import (
 )
 
 # Imports locaux
-from config import BOT_TOKEN, ADMIN_IDS, LOG_LEVEL, LOG_FILE, WEBHOOK_SERVER_HOST, WEBHOOK_SERVER_PORT
+from config import BOT_TOKEN, ADMIN_IDS, LOG_LEVEL, LOG_FILE, WEBHOOK_SERVER_HOST, WEBHOOK_SERVER_PORT, PUBLIC_BASE_URL
 from utils.database import db
 from utils.scheduler import bot_scheduler
 from webhook_server import run_webhook_server
@@ -82,6 +82,8 @@ from handlers.admin import (
     ban_command,
     unban_command,
     resetlimits_command,
+    handle_cookie_document,
+    handle_cookie_platform_callback,
     BROADCAST_MESSAGE
 )
 
@@ -243,6 +245,16 @@ def setup_handlers(application: Application):
         MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback)
     )
     
+    # ==================== COOKIES (upload admin) ====================
+    logger.info("🍪 Configuration de l'upload de cookies...")
+    
+    application.add_handler(
+        MessageHandler(filters.Document.ALL, handle_cookie_document)
+    )
+    application.add_handler(
+        CallbackQueryHandler(handle_cookie_platform_callback, pattern="^cookie_platform_")
+    )
+    
     # ==================== MESSAGES TEXTE ====================
     logger.info("💬 Configuration du handler de messages...")
     
@@ -399,7 +411,8 @@ def main():
         print(f"🤖 Token: {BOT_TOKEN[:15]}..." + "*" * 20)
         print(f"👥 Administrateurs: {ADMIN_IDS}")
         print(f"📝 Logs: {LOG_FILE}")
-        print(f"💳 Webhook paiement: http://{WEBHOOK_SERVER_HOST}:{WEBHOOK_SERVER_PORT}/webhooks/atelier")
+        print(f"🌐 Site web de téléchargement: {PUBLIC_BASE_URL}")
+        print(f"💳 Webhook paiement: {PUBLIC_BASE_URL}/webhooks/atelier")
         print("="*60)
         print("\n⏳ En attente de messages...\n")
         

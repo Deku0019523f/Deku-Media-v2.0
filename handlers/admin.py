@@ -7,10 +7,13 @@ from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ParseMode
 from utils.database import db
 from utils.user_manager import user_manager
-from config import ADMIN_IDS, PLATFORMS_ENABLED
+from config import ADMIN_IDS, PLATFORMS_ENABLED, COOKIES_MAP
 from datetime import datetime, timedelta
 import json
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 # États de conversation
 BROADCAST_MESSAGE, BAN_REASON = range(2)
@@ -539,3 +542,66 @@ async def resetlimits_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"🔄 Limites de téléchargement réinitialisées pour `{target_id}`.",
         parse_mode=ParseMode.MARKDOWN
     )
+
+async def handle_cookie_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reçoit un fichier de cookies envoyé par un admin, demande la plateforme"""
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    document = update.message.document
+    if not document.file_name or not document.file_name.lower().endswith(".txt"):
+        await update.message.reply_text(
+            "❌ Envoie un fichier `.txt` au format Netscape (export de cookies de navigateur).",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    context.user_data["pending_cookie_file_id"] = document.file_id
+
+    keyboard = [
+        [
+            InlineKeyboardButton("YouTube", callback_data="cookie_platform_youtube"),
+            InlineKeyboardButton("Facebook", callback_data="cookie_platform_facebook"),
+        ],
+        [
+            InlineKeyboardButton("Instagram", callback_data="cookie_platform_instagram"),
+            InlineKeyboardButton("TikTok", callback_data="cookie_platform_tiktok"),
+        ],
+    ]
+    await update.message.reply_text(
+        "🍪 Pour quelle plateforme est ce fichier de cookies ?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def handle_cookie_platform_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Enregistre le fichier de cookies reçu pour la plateforme choisie"""
+    query = update.callback_query
+    await query.answer()
+
+    if query.from_user.id not in ADMIN_IDS:
+        return
+
+    platform = query.data.replace("cookie_platform_", "")
+    file_id = context.user_data.get("pending_cookie_file_id")
+
+    if not file_id:
+        await query.edit_message_text("❌ Session expirée, renvoie le fichier de cookies.")
+        return
+
+    dest_path = COOKIES_MAP.get(platform)
+    if not dest_path:
+        await query.edit_message_text("❌ Plateforme inconnue.")
+        return
+
+    try:
+        tg_file = await context.bot.get_file(file_id)
+        await tg_file.download_to_drive(str(dest_path))
+        context.user_data.pop("pending_cookie_file_id", None)
+        await query.edit_message_text(
+            f"✅ Cookies **{platform.capitalize()}** mis à jour (`{dest_path.name}`).\n\n"
+            f"Utilisés immédiatement pour les prochains téléchargements (bot et site web).",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except Exception:
+        logger.exception(f"Échec sauvegarde cookies (plateforme={platform})")
+        await query.edit_message_text("❌ Erreur lors de la sauvegarde du fichier. Réessaie.")

@@ -77,6 +77,10 @@ Les données utilisateur sont stockées à deux endroits complémentaires :
 └── locales/
     ├── fr.py                   # Textes français
     └── en.py                   # Textes anglais
+│
+└── static/
+    ├── logo.png                 # Logo affiché sur la page web
+    └── favicon.png
 ```
 
 ## ⚙️ Prérequis
@@ -117,7 +121,7 @@ cp .env.example .env
 | `OWNER_USERNAME` | Optionnel | Affiché dans le message `/start` |
 | `WEBHOOK_SERVER_HOST` / `PORT` | Optionnel | Interface/port du serveur de webhook (défaut : `0.0.0.0:8081`) |
 | `BOT_USERNAME` | Optionnel | Nom d'utilisateur du bot, affiché sur la page web (défaut : `MediaDeku_bot`) |
-| `PUBLIC_BASE_URL` | Optionnel | URL publique du service. Auto-détectée sur Render/Railway |
+| `PUBLIC_BASE_URL` | Optionnel | URL publique du service. Auto-détectée sur Render/Railway, et via l'IP publique de la machine sur un VPS |
 | `WEBAPP_SECRET_KEY` | Recommandé en prod | Clé de signature des sessions web — sans elle, les sessions ne survivent pas à un redémarrage |
 
 ⚠️ Le port `WEBHOOK_SERVER_PORT` doit être ouvert dans le pare-feu du serveur (`ufw allow 8081/tcp` par exemple) pour qu'Atelier puisse joindre le bot.
@@ -176,12 +180,25 @@ Le panneau (`/admin`) donne aussi accès aux statistiques, à la liste des paiem
 
 ## 🌐 Page web de téléchargement
 
-Accessible à la racine du service (`PUBLIC_BASE_URL`) :
+Page unique (pas d'écran de connexion séparé) à la racine du service (`PUBLIC_BASE_URL`), avec logo, aperçu façon Telegram et indicateurs de chargement :
 
 1. L'utilisateur entre son ID Telegram (visible via [@userinfobot](https://t.me/userinfobot) par exemple)
 2. Le bot lui envoie un code à 6 chiffres en message privé — **il faut donc avoir déjà envoyé `/start` au bot** pour pouvoir le recevoir
 3. Le code est valable 10 minutes, 5 essais maximum, et une seule demande par minute par ID (anti-spam)
-4. Une fois validé, une session de 30 jours s'ouvre (cookie signé) et la page de téléchargement (`/app`) devient accessible — même statut Premium et mêmes limites quotidiennes que sur le bot
+4. Une fois validé, une session de 30 jours s'ouvre (cookie signé) et le même écran affiche directement l'outil de téléchargement — même statut Premium et mêmes limites quotidiennes que sur le bot
+5. Coller un lien affiche d'abord un **aperçu** (miniature, titre, durée, auteur, vues — comme les cartes du bot Telegram) avant de lancer le téléchargement
+
+Sur un VPS, l'URL publique du site est **auto-détectée au démarrage** (IP publique de la machine) et affichée dans les logs (`🌐 Site web de téléchargement: ...`) — pas besoin de la configurer à la main, sauf pour utiliser un nom de domaine à la place de l'IP brute.
+
+## 🍪 Mettre à jour les cookies depuis Telegram
+
+Un admin peut envoyer un fichier de cookies (`.txt`, format Netscape) directement en message au bot : celui-ci propose ensuite de choisir la plateforme (YouTube / Facebook / Instagram / TikTok) et l'enregistre automatiquement au bon endroit. Utilisé immédiatement, aussi bien par le bot que par la page web.
+
+⚠️ Sur Render/Railway, le système de fichiers est **éphémère** : les cookies envoyés ainsi disparaissent au prochain déploiement/redémarrage (contrairement à un VPS, où ils persistent). Sur ces plateformes, prévoyez soit un disque persistant (payant sur Render), soit de renvoyer les cookies après chaque déploiement.
+
+## 💓 Maintien en activité (Render)
+
+Le planificateur (`utils/scheduler.py`) fait un auto-ping toutes les 10 minutes sur `/health`, pour éviter que le plan gratuit Render mette le service en veille après 15 minutes d'inactivité. Inoffensif ailleurs (VPS, Railway...).
 
 ## 📎 Fichiers volumineux (>50 Mo)
 

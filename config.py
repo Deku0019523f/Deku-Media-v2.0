@@ -91,17 +91,45 @@ WEBHOOK_SERVER_HOST = os.getenv("WEBHOOK_SERVER_HOST", "0.0.0.0")
 WEBHOOK_SERVER_PORT = int(os.getenv("PORT", os.getenv("WEBHOOK_SERVER_PORT", "8081")))
 
 # ==================== APPLICATION WEB (page de téléchargement) ====================
-# 🔧 À CONFIGURER : URL publique complète du service (sans slash final), ex:
+def _detect_public_ip():
+    """
+    Détecte l'IP publique de la machine — utilisé UNIQUEMENT en dernier
+    recours (VPS sans PUBLIC_BASE_URL défini, ni Render/Railway). Timeout
+    court : si aucun accès réseau vers ces services, on retombe sur
+    localhost sans bloquer le démarrage.
+    """
+    try:
+        import requests
+        for service_url in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+            try:
+                resp = requests.get(service_url, timeout=2)
+                ip = resp.text.strip()
+                if resp.status_code == 200 and ip:
+                    return ip
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+# 🔧 URL publique complète du service (sans slash final), ex:
 # "https://mon-bot.onrender.com", "https://mon-bot.up.railway.app", ou
 # "http://VOTRE_IP_OU_DOMAINE:8081" sur un VPS.
-# Render et Railway exposent automatiquement leur URL via ces variables ;
-# on les détecte pour éviter une config manuelle en plus sur ces plateformes.
-PUBLIC_BASE_URL = (
-    os.getenv("PUBLIC_BASE_URL")
-    or (f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}" if os.getenv("RENDER_EXTERNAL_HOSTNAME") else None)
-    or (f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}" if os.getenv("RAILWAY_PUBLIC_DOMAIN") else None)
-    or "http://localhost:8081"
-)
+# Ordre de résolution : PUBLIC_BASE_URL explicite > Render > Railway >
+# IP publique auto-détectée (VPS) > localhost (dernier repli, dev local).
+_render_host = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+_railway_host = os.getenv("RAILWAY_PUBLIC_DOMAIN")
+_webhook_port_for_url = int(os.getenv("PORT", os.getenv("WEBHOOK_SERVER_PORT", "8081")))
+
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
+if not PUBLIC_BASE_URL and _render_host:
+    PUBLIC_BASE_URL = f"https://{_render_host}"
+elif not PUBLIC_BASE_URL and _railway_host:
+    PUBLIC_BASE_URL = f"https://{_railway_host}"
+elif not PUBLIC_BASE_URL:
+    _detected_ip = _detect_public_ip()
+    PUBLIC_BASE_URL = f"http://{_detected_ip}:{_webhook_port_for_url}" if _detected_ip else "http://localhost:8081"
 
 # Nom d'utilisateur du bot (sans @), requis par le widget de connexion Telegram
 BOT_USERNAME = os.getenv("BOT_USERNAME", "MediaDeku_bot")
