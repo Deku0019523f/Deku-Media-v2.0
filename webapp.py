@@ -244,7 +244,6 @@ analyzeBtn.addEventListener('click', async () => {{
   if (!url) return;
   previewCard.style.display = 'none';
   analyzeBtn.disabled = true;
-  setMainStatus('<span class="spinner"></span> Analyse du lien...');
   mainStatus.innerHTML = '<span class="spinner"></span> Analyse du lien...';
   mainStatus.className = 'status-line';
 
