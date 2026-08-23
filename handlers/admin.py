@@ -15,6 +15,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def escape_markdown(text) -> str:
+    """Échappe les caractères spéciaux du Markdown (legacy) dans du texte non
+    fiable (pseudos Telegram, raisons de ban...) avant de l'insérer dans un
+    message parse_mode=MARKDOWN — un pseudo avec un simple "_" fait sinon
+    échouer l'envoi du message entier."""
+    if not text:
+        return ""
+    text = str(text)
+    for char in ('_', '*', '`', '['):
+        text = text.replace(char, f'\\{char}')
+    return text
+
 # États de conversation
 BROADCAST_MESSAGE, BAN_REASON = range(2)
 
@@ -136,7 +149,7 @@ async def admin_payments_callback(update: Update, context: ContextTypes.DEFAULT_
             payment_id = payment['id']
             created = payment['created_at']
             
-            text += f"• @{username} (ID: `{user_id}`)\n"
+            text += f"• @{escape_markdown(username)} (ID: `{user_id}`)\n"
             text += f"  Date: {created[:10]}\n\n"
             
             keyboard.append([
@@ -263,7 +276,7 @@ async def admin_referrals_callback(update: Update, context: ContextTypes.DEFAULT
     text += "🏆 **Top 5 parrains :**\n\n"
     
     for i, referrer in enumerate(top_referrers[:5], 1):
-        text += f"{i}. @{referrer['username']} (ID: `{referrer['id']}`)\n"
+        text += f"{i}. @{escape_markdown(referrer['username'])} (ID: `{referrer['id']}`)\n"
         text += f"   • Invités : {referrer['invited']}\n"
         text += f"   • Points : {referrer['points']}\n\n"
     
@@ -343,7 +356,18 @@ async def admin_receive_broadcast(update: Update, context: ContextTypes.DEFAULT_
             await context.bot.send_message(user_id, message, parse_mode=ParseMode.MARKDOWN)
             success += 1
             await asyncio.sleep(0.05)
-        except:
+        except Exception as e:
+            # Repli en texte brut si l'échec vient du Markdown (ex: un "_"
+            # non échappé dans le message) — évite que TOUT le broadcast
+            # échoue silencieusement pour une simple faute de frappe.
+            if "parse entities" in str(e).lower() or "can't find end" in str(e).lower():
+                try:
+                    await context.bot.send_message(user_id, message)
+                    success += 1
+                    await asyncio.sleep(0.05)
+                    continue
+                except Exception:
+                    pass
             failed += 1
     
     await update.message.reply_text(
@@ -489,7 +513,7 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.ban_user(target_id, reason, admin_id)
     
     await update.message.reply_text(
-        f"🚫 Utilisateur `{target_id}` banni.\nRaison : {reason}",
+        f"🚫 Utilisateur `{target_id}` banni.\nRaison : {escape_markdown(reason)}",
         parse_mode=ParseMode.MARKDOWN
     )
 

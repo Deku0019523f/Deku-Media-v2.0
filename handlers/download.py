@@ -20,6 +20,21 @@ import asyncio
 import secrets
 import os
 
+
+def escape_markdown(text) -> str:
+    """
+    Échappe les caractères spéciaux du Markdown (legacy) dans du texte non
+    fiable (titres/auteurs venant de yt-dlp) avant de l'insérer dans un
+    message parse_mode=MARKDOWN — sinon un simple "_" ou "*" en nombre
+    impair dans un titre fait échouer l'envoi du message entier.
+    """
+    if not text:
+        return ""
+    text = str(text)
+    for char in ('_', '*', '`', '['):
+        text = text.replace(char, f'\\{char}')
+    return text
+
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Traite les URLs envoyées par l'utilisateur"""
     user_id = update.effective_user.id
@@ -105,12 +120,13 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         views_str = "Inconnues"
     
-    # Créer l'aperçu
+    # Créer l'aperçu (tronquer AVANT d'échapper, pour ne jamais couper une
+    # séquence d'échappement en plein milieu et laisser un "\" en trop)
     preview_text = locale.get_text(
         "download_preview",
-        title=video_info['title'][:100],
+        title=escape_markdown(video_info['title'][:100]),
         duration=duration_str,
-        uploader=video_info['uploader'][:50],
+        uploader=escape_markdown(video_info['uploader'][:50]),
         platform=platform.capitalize(),
         views=views_str
     )
@@ -290,8 +306,10 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"(limite : {TELEGRAM_UPLOAD_LIMIT_MB} Mo).\n\n"
                         f"🔗 Téléchargement direct :\n{download_url}\n\n"
                         f"⏱ Lien valable {expiry_minutes} minutes."
-                    ),
-                    parse_mode=ParseMode.MARKDOWN
+                    )
+                    # Pas de parse_mode ici : le token dans download_url peut
+                    # contenir des "_" qui casseraient le Markdown, et ce
+                    # message n'utilise de toute façon aucune mise en forme.
                 )
             
             # Envoyer comme vidéo ou document selon la taille et l'extension
