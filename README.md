@@ -168,6 +168,7 @@ Réservées aux IDs listés dans `ADMIN_IDS`.
 | `/ban USER_ID RAISON` | Bannit un utilisateur |
 | `/unban USER_ID` | Débannit un utilisateur |
 | `/resetlimits USER_ID` | Réinitialise les compteurs de téléchargement quotidiens |
+| `/removecookies PLATEFORME` | Supprime le fichier de cookies d'une plateforme (youtube/facebook/instagram/tiktok) |
 
 Le panneau (`/admin`) donne aussi accès aux statistiques, à la liste des paiements en attente (validation manuelle), à la gestion des utilisateurs, au broadcast, aux logs et à l'activation/désactivation de chaque plateforme.
 
@@ -180,15 +181,14 @@ Le panneau (`/admin`) donne aussi accès aux statistiques, à la liste des paiem
 
 ## 🌐 Page web de téléchargement
 
-Page unique (pas d'écran de connexion séparé) à la racine du service (`PUBLIC_BASE_URL`), avec logo, aperçu façon Telegram et indicateurs de chargement :
+Accès libre, sans connexion requise, à la racine du service (`PUBLIC_BASE_URL`), avec logo, aperçu façon Telegram et indicateurs de chargement :
 
-1. L'utilisateur entre son ID Telegram (visible via [@userinfobot](https://t.me/userinfobot) par exemple)
-2. Le bot lui envoie un code à 6 chiffres en message privé — **il faut donc avoir déjà envoyé `/start` au bot** pour pouvoir le recevoir
-3. Le code est valable 10 minutes, 5 essais maximum, et une seule demande par minute par ID (anti-spam)
-4. Une fois validé, une session de 30 jours s'ouvre (cookie signé) et le même écran affiche directement l'outil de téléchargement — même statut Premium et mêmes limites quotidiennes que sur le bot
-5. Coller un lien affiche d'abord un **aperçu** (miniature, titre, durée, auteur, vues — comme les cartes du bot Telegram) avant de lancer le téléchargement
+1. Coller un lien affiche d'abord un **aperçu** (miniature, titre, durée, auteur, vues — comme les cartes du bot Telegram)
+2. Un clic sur Télécharger lance le téléchargement ; une fois prêt, un lien de récupération apparaît
 
-Sur un VPS, l'URL publique du site est **auto-détectée au démarrage** (IP publique de la machine) et affichée dans les logs (`🌐 Site web de téléchargement: ...`) — pas besoin de la configurer à la main, sauf pour utiliser un nom de domaine à la place de l'IP brute.
+⚠️ Le site n'étant pas lié à une identité Telegram, il n'y a **pas de Premium ni de limites quotidiennes personnalisées côté web** — uniquement côté bot Telegram, qui garde toutes ses règles habituelles. Chaque visiteur reçoit juste un identifiant anonyme (cookie) pour retrouver ses propres téléchargements en cours, sans lien avec un compte.
+
+Sur un VPS, l'URL publique du site est **auto-détectée au démarrage** (IP publique de la machine, en HTTP simple) et affichée dans les logs (`🌐 Site web de téléchargement: ...`). Si vous définissez `PUBLIC_BASE_URL` manuellement, gardez le bon protocole (`http://` sans nom de domaine + certificat TLS, `https://` seulement si vous en avez un) — un mauvais protocole casse silencieusement le site et les liens de téléchargement direct.
 
 ## 🍪 Mettre à jour les cookies depuis Telegram
 

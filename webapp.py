@@ -1,45 +1,33 @@
 # -*- coding: utf-8 -*-
 """
-Page web de téléchargement — une seule page (pas d'écran de connexion séparé) :
-- Non connecté : formulaire "ID Telegram" -> code à 6 chiffres -> session
-- Connecté : formulaire de téléchargement avec aperçu (façon Telegram) avant
-  de lancer le téléchargement
+Page web de téléchargement — accès libre, sans connexion Telegram requise.
+
+⚠️ Sans identité Telegram vérifiée, il n'y a pas de suivi Premium ni de
+limites quotidiennes personnalisées côté web (contrairement au bot Telegram,
+qui lui garde toutes ses règles habituelles, inchangées). Chaque visiteur
+reçoit un identifiant anonyme (cookie) utilisé uniquement pour retrouver ses
+propres téléchargements en cours — ce n'est pas un compte.
 
 Routes montées sur le même serveur aiohttp que les webhooks de paiement
 (voir webhook_server.py / bot.py) :
 
-  GET  /                    page unique (login OU outil, selon la session)
-  POST /auth/request-code   envoie le code de connexion via le bot
-  POST /auth/verify-code    vérifie le code, ouvre la session
+  GET  /                    page unique : outil de téléchargement
   POST /api/preview         aperçu (titre, miniature, durée...) sans télécharger
-  POST /api/download        lance le téléchargement pour l'utilisateur connecté
+  POST /api/download        lance le téléchargement
   GET  /api/status/{token}  statut d'un téléchargement en cours
-  GET  /logout              efface la session
-  GET  /dl/{token}          sert le fichier (sans connexion requise — lien à
-                            usage direct, utilisé aussi pour l'envoi Telegram >50 Mo)
-
-⚠️ Prérequis : l'utilisateur doit avoir déjà démarré une conversation avec
-le bot (/start) — Telegram interdit à un bot d'écrire en premier à quelqu'un
-qui ne lui a jamais parlé, donc l'envoi du code échouera sinon.
+  GET  /dl/{token}          sert le fichier (lien à usage direct, aussi
+                            utilisé pour l'envoi Telegram des fichiers >50 Mo)
 """
 import asyncio
 import logging
 import secrets
 from pathlib import Path
 from aiohttp import web
-from telegram.error import TelegramError
 
-from config import PUBLIC_BASE_URL, BOT_USERNAME, DOWNLOAD_LINK_EXPIRY, MAX_FILE_SIZE_MB
-from utils.telegram_auth import (
-    generate_login_code, create_session_token, verify_session_token,
-    LOGIN_CODE_VALID_SECONDS, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_REQUEST_COOLDOWN,
-)
+from config import PUBLIC_BASE_URL, DOWNLOAD_LINK_EXPIRY, MAX_FILE_SIZE_MB
 from utils.platform_detector import platform_detector
 from utils.downloader import downloader
-from utils.user_manager import user_manager
-from utils.limits import limit_checker
 from utils.database import db
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +40,27 @@ _COOKIE_SECURE = PUBLIC_BASE_URL.startswith("https://")
 _background_tasks = set()
 
 
-def _get_logged_in_user_id(request: web.Request):
-    token = request.cookies.get("session")
-    if not token:
-        return None
-    return verify_session_token(token)
+def _get_or_create_visitor_id(request: web.Request):
+    """
+    Identifiant anonyme par visiteur (cookie), utilisé UNIQUEMENT pour
+    retrouver ses propres téléchargements en cours — ce n'est pas un compte,
+    pas de lien avec Telegram, pas de Premium/limites personnalisées.
+    """
+    visitor_id = request.cookies.get("visitor_id")
+    is_new = not visitor_id
+    if is_new:
+        visitor_id = secrets.token_urlsafe(16)
+    return visitor_id, is_new
+
+
+def _set_visitor_cookie(response: web.Response, visitor_id: str):
+    response.set_cookie(
+        "visitor_id", visitor_id,
+        max_age=365 * 86400,
+        httponly=True,
+        secure=_COOKIE_SECURE,
+        samesite="Lax",
+    )
 
 
 def _format_duration(seconds) -> str:
@@ -185,94 +189,12 @@ def _render(content: str) -> str:
     return _PAGE_TEMPLATE.format(content=content, repo_url=GITHUB_REPO_URL)
 
 
-# ==================== CONTENU : CONNEXION ====================
-
-_LOGIN_CONTENT = f"""
-<div class="card" id="card-login">
-  <div id="step-id">
-    <h2>🔑 Connexion</h2>
-    <p class="hint">Entre ton ID Telegram pour recevoir un code de connexion par message privé du bot. Tu dois avoir déjà démarré <a href="https://t.me/{BOT_USERNAME}" style="color:#3390ec;">@{BOT_USERNAME}</a> (/start) pour pouvoir le recevoir.</p>
-    <input type="text" id="tgid" inputmode="numeric" placeholder="Ton ID Telegram (ex: 1299831974)">
-    <button id="send-code">Recevoir mon code</button>
-  </div>
-  <div id="step-code" style="display:none;">
-    <h2>📩 Code reçu</h2>
-    <p class="hint">Entre le code à 6 chiffres reçu sur Telegram.</p>
-    <input type="text" id="code" inputmode="numeric" maxlength="6" placeholder="Code à 6 chiffres">
-    <button id="verify-code">Valider</button>
-    <button class="secondary" id="back-id" type="button">← Changer d'ID</button>
-  </div>
-  <div class="status-line" id="login-status"></div>
-</div>
-
-<script>
-const stepId = document.getElementById('step-id');
-const stepCode = document.getElementById('step-code');
-const statusEl = document.getElementById('login-status');
-let currentId = null;
-
-function setStatus(msg, cls) {{
-  statusEl.textContent = msg;
-  statusEl.className = 'status-line' + (cls ? ' ' + cls : '');
-}}
-
-document.getElementById('send-code').addEventListener('click', async () => {{
-  const tgid = document.getElementById('tgid').value.trim();
-  if (!tgid) return;
-  setStatus('⏳ Envoi du code...');
-  try {{
-    const res = await fetch('/auth/request-code', {{
-      method: 'POST', headers: {{'Content-Type': 'application/json'}},
-      body: JSON.stringify({{telegram_id: tgid}})
-    }});
-    const data = await res.json();
-    if (!res.ok) {{ setStatus('❌ ' + (data.error || 'Erreur.'), 'err'); return; }}
-    currentId = tgid;
-    setStatus('✅ Code envoyé — vérifie tes messages Telegram.', 'ok');
-    stepId.style.display = 'none';
-    stepCode.style.display = 'block';
-  }} catch (e) {{ setStatus('❌ Erreur réseau.', 'err'); }}
-}});
-
-document.getElementById('back-id').addEventListener('click', () => {{
-  stepCode.style.display = 'none';
-  stepId.style.display = 'block';
-  setStatus('');
-}});
-
-document.getElementById('verify-code').addEventListener('click', async () => {{
-  const code = document.getElementById('code').value.trim();
-  if (!code || !currentId) return;
-  setStatus('⏳ Vérification...');
-  try {{
-    const res = await fetch('/auth/verify-code', {{
-      method: 'POST', headers: {{'Content-Type': 'application/json'}},
-      body: JSON.stringify({{telegram_id: currentId, code}})
-    }});
-    const data = await res.json();
-    if (!res.ok) {{ setStatus('❌ ' + (data.error || 'Code invalide.'), 'err'); return; }}
-    window.location.href = '/';
-  }} catch (e) {{ setStatus('❌ Erreur réseau.', 'err'); }}
-}});
-</script>
-"""
-
+# ==================== PAGE PRINCIPALE ====================
 
 async def handle_index(request: web.Request) -> web.Response:
-    user_id = _get_logged_in_user_id(request)
-    if not user_id:
-        return web.Response(text=_render(_LOGIN_CONTENT), content_type="text/html")
-
-    user_data = await user_manager.get_user(user_id)
-    premium_badge = "✨ Premium" if user_data.get("premium") else "Compte standard"
-    display_name = user_data.get("username") or user_id
+    visitor_id, is_new = _get_or_create_visitor_id(request)
 
     content = f"""
-<div class="top-account">
-  <span>{premium_badge} — <b>{display_name}</b></span>
-  <a href="/logout">Se déconnecter</a>
-</div>
-
 <div class="card">
   <h2>📥 Télécharger une vidéo</h2>
   <p class="hint">Colle un lien (YouTube, TikTok, Instagram, Facebook, Pinterest, Twitter/X, ou l'un des ~1750 autres sites supportés).</p>
@@ -401,7 +323,10 @@ async function pollStatus(token, dlStatus, btn) {{
 }}
 </script>
 """
-    return web.Response(text=_render(content), content_type="text/html")
+    response = web.Response(text=_render(content), content_type="text/html")
+    if is_new:
+        _set_visitor_cookie(response, visitor_id)
+    return response
 
 
 async def handle_app(request: web.Request) -> web.Response:
@@ -409,107 +334,9 @@ async def handle_app(request: web.Request) -> web.Response:
     raise web.HTTPFound("/")
 
 
-# ==================== AUTHENTIFICATION ====================
-
-async def handle_request_code(request: web.Request) -> web.Response:
-    try:
-        body = await request.json()
-        telegram_id = str(body.get("telegram_id", "")).strip()
-    except Exception:
-        return web.json_response({"error": "Requête invalide."}, status=400)
-
-    if not telegram_id.isdigit():
-        return web.json_response({"error": "ID Telegram invalide."}, status=400)
-
-    user_id = int(telegram_id)
-
-    existing = await db.get_login_code(user_id)
-    if existing:
-        created_at = datetime.fromisoformat(existing["created_at"])
-        elapsed = (datetime.now() - created_at).total_seconds()
-        if elapsed < LOGIN_CODE_REQUEST_COOLDOWN:
-            wait = int(LOGIN_CODE_REQUEST_COOLDOWN - elapsed)
-            return web.json_response({"error": f"Réessaie dans {wait}s."}, status=429)
-
-    code = generate_login_code()
-    await db.create_login_code(user_id, code, LOGIN_CODE_VALID_SECONDS)
-
-    bot = request.app["bot"]
-    try:
-        await bot.send_message(
-            user_id,
-            f"🔑 Ton code de connexion au site : `{code}`\n\nValable 10 minutes.",
-            parse_mode="Markdown"
-        )
-    except TelegramError:
-        await db.delete_login_code(user_id)
-        return web.json_response(
-            {"error": f"Impossible de t'envoyer le code. As-tu bien démarré @{BOT_USERNAME} (/start) ?"},
-            status=400
-        )
-
-    return web.json_response({"ok": True})
-
-
-async def handle_verify_code(request: web.Request) -> web.Response:
-    try:
-        body = await request.json()
-        telegram_id = str(body.get("telegram_id", "")).strip()
-        code = str(body.get("code", "")).strip()
-    except Exception:
-        return web.json_response({"error": "Requête invalide."}, status=400)
-
-    if not telegram_id.isdigit():
-        return web.json_response({"error": "ID Telegram invalide."}, status=400)
-
-    user_id = int(telegram_id)
-    record = await db.get_login_code(user_id)
-
-    if not record:
-        return web.json_response({"error": "Aucun code en attente. Redemande-en un."}, status=400)
-
-    if record["attempts"] >= LOGIN_CODE_MAX_ATTEMPTS:
-        await db.delete_login_code(user_id)
-        return web.json_response({"error": "Trop d'essais. Redemande un code."}, status=429)
-
-    expires_at = datetime.fromisoformat(record["expires_at"])
-    if datetime.now() > expires_at:
-        await db.delete_login_code(user_id)
-        return web.json_response({"error": "Code expiré. Redemande-en un."}, status=400)
-
-    if code != record["code"]:
-        await db.increment_login_code_attempts(user_id)
-        remaining = LOGIN_CODE_MAX_ATTEMPTS - record["attempts"] - 1
-        return web.json_response({"error": f"Code incorrect ({remaining} essai(s) restant(s))."}, status=400)
-
-    await db.delete_login_code(user_id)
-    await user_manager.get_user(user_id)  # crée le profil s'il n'existe pas encore
-
-    token = create_session_token(user_id)
-    response = web.json_response({"ok": True})
-    response.set_cookie(
-        "session", token,
-        max_age=30 * 86400,
-        httponly=True,
-        secure=_COOKIE_SECURE,
-        samesite="Lax",
-    )
-    return response
-
-
-async def handle_logout(request: web.Request) -> web.Response:
-    response = web.HTTPFound("/")
-    response.del_cookie("session")
-    raise response
-
-
 # ==================== TÉLÉCHARGEMENT ====================
 
 async def handle_api_preview(request: web.Request) -> web.Response:
-    user_id = _get_logged_in_user_id(request)
-    if not user_id:
-        return web.json_response({"error": "not_authenticated"}, status=401)
-
     try:
         body = await request.json()
         url = (body.get("url") or "").strip()
@@ -542,10 +369,12 @@ async def handle_api_preview(request: web.Request) -> web.Response:
     })
 
 
-async def _process_web_download(token: str, url: str, platform: str, quality: str, user_id: int):
+async def _process_web_download(token: str, url: str, platform: str, quality: str, visitor_id: str):
     """Tâche de fond : télécharge la vidéo puis met à jour le lien correspondant"""
     try:
-        file_path = await downloader.download_video(url, platform, quality, user_id)
+        # Pas d'identité Telegram ici : on utilise un identifiant technique
+        # neutre pour le nom de fichier temporaire (pas de compteurs/limites).
+        file_path = await downloader.download_video(url, platform, quality, f"web_{token[:8]}")
 
         if not file_path or not file_path.exists():
             await db.update_download_link(token, status="error", error="Fichier introuvable après téléchargement.")
@@ -560,8 +389,7 @@ async def _process_web_download(token: str, url: str, platform: str, quality: st
         await db.update_download_link(
             token, status="ready", file_path=str(file_path), filename=file_path.name
         )
-        await user_manager.increment_download(user_id, platform == "youtube")
-        await db.log_download(user_id, platform, url, quality, True)
+        await db.log_download(visitor_id, platform, url, quality, True)
 
     except Exception as e:
         logger.exception(f"Échec téléchargement web (token={token})")
@@ -569,9 +397,7 @@ async def _process_web_download(token: str, url: str, platform: str, quality: st
 
 
 async def handle_api_download(request: web.Request) -> web.Response:
-    user_id = _get_logged_in_user_id(request)
-    if not user_id:
-        return web.json_response({"error": "not_authenticated"}, status=401)
+    visitor_id, is_new = _get_or_create_visitor_id(request)
 
     try:
         body = await request.json()
@@ -588,31 +414,26 @@ async def handle_api_download(request: web.Request) -> web.Response:
     if not is_supported:
         return web.json_response({"error": "Plateforme non supportée ou lien invalide."}, status=400)
 
-    user_data = await user_manager.get_user(user_id)
-    is_youtube = platform == "youtube"
-    can_download, error_msg = await limit_checker.check_limits(user_data, is_youtube)
-    if not can_download:
-        return web.json_response({"error": error_msg}, status=429)
-
     token = secrets.token_urlsafe(24)
-    await db.create_download_link(token, user_id, DOWNLOAD_LINK_EXPIRY, status="pending")
+    await db.create_download_link(token, visitor_id, DOWNLOAD_LINK_EXPIRY, status="pending")
 
-    task = asyncio.create_task(_process_web_download(token, url, platform, quality, user_id))
+    task = asyncio.create_task(_process_web_download(token, url, platform, quality, visitor_id))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
-    return web.json_response({"token": token}, status=202)
+    response = web.json_response({"token": token}, status=202)
+    if is_new:
+        _set_visitor_cookie(response, visitor_id)
+    return response
 
 
 async def handle_api_status(request: web.Request) -> web.Response:
-    user_id = _get_logged_in_user_id(request)
-    if not user_id:
-        return web.json_response({"error": "not_authenticated"}, status=401)
+    visitor_id, _ = _get_or_create_visitor_id(request)
 
     token = request.match_info["token"]
     link = await db.get_download_link(token)
 
-    if not link or link["user_id"] != user_id:
+    if not link or link["user_id"] != visitor_id:
         return web.json_response({"error": "not_found"}, status=404)
 
     if link["status"] == "ready":
@@ -655,9 +476,6 @@ def register_webapp_routes(app: web.Application):
 
     app.router.add_get("/", handle_index)
     app.router.add_get("/app", handle_app)
-    app.router.add_post("/auth/request-code", handle_request_code)
-    app.router.add_post("/auth/verify-code", handle_verify_code)
-    app.router.add_get("/logout", handle_logout)
     app.router.add_post("/api/preview", handle_api_preview)
     app.router.add_post("/api/download", handle_api_download)
     app.router.add_get("/api/status/{token}", handle_api_status)

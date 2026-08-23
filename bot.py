@@ -84,6 +84,7 @@ from handlers.admin import (
     resetlimits_command,
     handle_cookie_document,
     handle_cookie_platform_callback,
+    removecookies_command,
     BROADCAST_MESSAGE
 )
 
@@ -139,6 +140,7 @@ def setup_handlers(application: Application):
     application.add_handler(CommandHandler("ban", ban_command))
     application.add_handler(CommandHandler("unban", unban_command))
     application.add_handler(CommandHandler("resetlimits", resetlimits_command))
+    application.add_handler(CommandHandler("removecookies", removecookies_command))
     application.add_handler(CommandHandler("help", start_command))
     application.add_handler(CommandHandler("aide", start_command))
     

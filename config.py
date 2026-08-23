@@ -143,6 +143,14 @@ WEBAPP_SECRET_KEY = os.getenv("WEBAPP_SECRET_KEY", "")
 # 50 Mo) et génère à la place un lien de téléchargement direct.
 TELEGRAM_UPLOAD_LIMIT_MB = 50
 
+# Chemin vers un ffmpeg portable (fusion audio/vidéo), indépendant de ce qui
+# est ou non installé sur la plateforme d'hébergement.
+try:
+    import imageio_ffmpeg
+    FFMPEG_LOCATION = imageio_ffmpeg.get_ffmpeg_exe()
+except Exception:
+    FFMPEG_LOCATION = None  # yt-dlp retombera sur un éventuel ffmpeg système
+
 # ==================== SUPPORT & COMMUNAUTÉ ====================
 SUPPORT_CHANNEL = "https://t.me/connexiontoutreseaus"
 

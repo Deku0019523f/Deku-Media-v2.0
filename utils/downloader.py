@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Optional, List
 from config import (
     COOKIES_MAP, DOWNLOADS_DIR, YTDLP_BASE_OPTIONS,
-    MAX_FILE_SIZE_MB, NORMAL_MAX_QUALITY_YOUTUBE, PREMIUM_MAX_QUALITY
+    MAX_FILE_SIZE_MB, NORMAL_MAX_QUALITY_YOUTUBE, PREMIUM_MAX_QUALITY, FFMPEG_LOCATION
 )
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,44 @@ class TikTokAPI:
             print(f"❌ Erreur API TikTok: {e}")
             return False
 
+    @staticmethod
+    async def get_info(url: str) -> Optional[Dict]:
+        """
+        Récupère les métadonnées TikTok via l'API TikWM, SANS télécharger.
+        Plus fiable que yt-dlp pour TikTok (moins bloqué par la détection
+        anti-bot) — utilisé en priorité pour les aperçus.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+
+            def fetch_api():
+                response = requests.post(
+                    "https://www.tikwm.com/api/",
+                    data={'url': url, 'hd': 1},
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    timeout=30
+                )
+                return response.json()
+
+            data = await loop.run_in_executor(None, fetch_api)
+
+            if data.get('code') != 0:
+                return None
+
+            d = data.get('data', {})
+            return {
+                'title': d.get('title') or 'Vidéo TikTok',
+                'duration': d.get('duration', 0),
+                'thumbnail': d.get('cover') or d.get('origin_cover'),
+                'uploader': (d.get('author') or {}).get('nickname', 'Inconnu'),
+                'view_count': d.get('play_count', 0),
+            }
+        except Exception:
+            return None
+
 class Downloader:
     
     def __init__(self):
@@ -99,6 +137,8 @@ class Downloader:
         """Construit les options yt-dlp avec cookies et headers optimisés"""
         options = YTDLP_BASE_OPTIONS.copy()
         options['outtmpl'] = output_path
+        if FFMPEG_LOCATION:
+            options['ffmpeg_location'] = FFMPEG_LOCATION
         
         # Ajouter le fichier cookie si disponible
         cookie_file = self._get_cookie_file(platform)
@@ -154,7 +194,8 @@ class Downloader:
         # ============ FACEBOOK ============
         elif platform == "facebook":
             options.update({
-                'format': 'best',
+                'format': 'best/bestvideo+bestaudio/bestaudio/best',
+                'merge_output_format': 'mp4',
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -177,13 +218,15 @@ class Downloader:
                     'Accept-Language': 'en-US,en;q=0.9',
                     'Referer': 'https://www.instagram.com/',
                 },
-                'format': 'best'
+                'format': 'best/bestvideo+bestaudio/bestaudio/best',
+                'merge_output_format': 'mp4',
             })
         
         # ============ TWITTER/X ============
         elif platform == "twitter":
             options.update({
-                'format': 'best',
+                'format': 'best/bestvideo+bestaudio/bestaudio/best',
+                'merge_output_format': 'mp4',
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                 }
@@ -192,14 +235,16 @@ class Downloader:
         # ============ PINTEREST ============
         elif platform == "pinterest":
             options.update({
-                'format': 'best',
+                'format': 'best/bestvideo+bestaudio/bestaudio/best',
+                'merge_output_format': 'mp4',
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                 }
             })
         
         else:
-            options['format'] = 'best'
+            options['format'] = 'best/bestvideo+bestaudio/bestaudio/best'
+            options['merge_output_format'] = 'mp4'
         
         # Limite de taille
         options['max_filesize'] = MAX_FILE_SIZE_MB * 1024 * 1024
@@ -210,6 +255,19 @@ class Downloader:
         """
         Extrait les métadonnées vidéo sans télécharger
         """
+        # TikTok : l'API TikWM est plus fiable que l'extracteur yt-dlp pour
+        # les infos (même repli que download_video). Si elle échoue, on
+        # retombe sur yt-dlp normalement.
+        if platform == "tiktok":
+            tiktok_info = await TikTokAPI.get_info(url)
+            if tiktok_info:
+                return {
+                    **tiktok_info,
+                    'platform': platform,
+                    'formats': [{'quality': 'best', 'label': 'Meilleure qualité'}],
+                }
+            logger.warning(f"API TikTok (infos) échouée, repli sur yt-dlp pour {url}")
+
         try:
             options = {
                 'quiet': True,

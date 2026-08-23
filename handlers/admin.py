@@ -605,3 +605,26 @@ async def handle_cookie_platform_callback(update: Update, context: ContextTypes.
     except Exception:
         logger.exception(f"Échec sauvegarde cookies (plateforme={platform})")
         await query.edit_message_text("❌ Erreur lors de la sauvegarde du fichier. Réessaie.")
+
+async def removecookies_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Supprime le fichier de cookies d'une plateforme (utile si les cookies sont invalides)"""
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    if len(context.args) != 1 or context.args[0].lower() not in COOKIES_MAP:
+        platforms = ", ".join(COOKIES_MAP.keys())
+        await update.message.reply_text(
+            f"❌ Usage : `/removecookies PLATEFORME`\n\nPlateformes : {platforms}",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    platform = context.args[0].lower()
+    path = COOKIES_MAP[platform]
+
+    if not path.exists():
+        await update.message.reply_text(f"ℹ️ Aucun fichier de cookies pour {platform.capitalize()}.")
+        return
+
+    path.unlink()
+    await update.message.reply_text(f"🗑 Cookies {platform.capitalize()} supprimés.")
