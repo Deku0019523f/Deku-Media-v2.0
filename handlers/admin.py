@@ -621,6 +621,29 @@ async def handle_cookie_platform_callback(update: Update, context: ContextTypes.
         tg_file = await context.bot.get_file(file_id)
         await tg_file.download_to_drive(str(dest_path))
         context.user_data.pop("pending_cookie_file_id", None)
+
+        # yt-dlp exige un en-tête Netscape reconnu ("# Netscape HTTP Cookie
+        # File" ou "# HTTP Cookie File") en première ligne du fichier. Sans
+        # lui, le fichier est silencieusement ignoré et les téléchargements
+        # échouent comme si aucun cookie n'avait été fourni.
+        try:
+            with open(dest_path, "r", encoding="utf-8", errors="ignore") as f:
+                first_line = f.readline().strip()
+        except Exception:
+            first_line = ""
+
+        if not first_line.startswith("#") or "cookie" not in first_line.lower():
+            await query.edit_message_text(
+                f"⚠️ Cookies **{platform.capitalize()}** enregistrés (`{dest_path.name}`), "
+                f"mais l'en-tête Netscape est absent ou invalide (première ligne : "
+                f"`{first_line or 'vide'}`).\n\n"
+                f"yt-dlp risque d'ignorer ce fichier. Réexporte-le avec une extension "
+                f"comme *Get cookies.txt LOCALLY*, qui ajoute automatiquement "
+                f"`# Netscape HTTP Cookie File` en première ligne.",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
         await query.edit_message_text(
             f"✅ Cookies **{platform.capitalize()}** mis à jour (`{dest_path.name}`).\n\n"
             f"Utilisés immédiatement pour les prochains téléchargements (bot et site web).",
