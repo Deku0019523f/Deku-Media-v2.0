@@ -373,7 +373,6 @@ function renderProgress(container, p) {{
       </div>
     </div>`;
 }}
-}}
 </script>
 """
     response = web.Response(text=_render(content), content_type="text/html")
