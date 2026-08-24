@@ -171,6 +171,9 @@ class Downloader:
         # ============ TIKTOK ============
         if platform == "tiktok":
             options.update({
+                # Impersonation TLS (via curl_cffi, déjà dans requirements.txt)
+                # pour éviter la détection par fingerprint réseau côté TikTok
+                'impersonate': 'chrome',
                 'format': 'best/bestvideo+bestaudio',
                 'merge_output_format': 'mp4',
                 'http_headers': {
@@ -194,6 +197,18 @@ class Downloader:
         
         # ============ YOUTUBE ============
         elif platform == "youtube":
+            # Contourne le blocage anti-bot "Sign in to confirm you're not a
+            # bot" (YouTube exige un PO Token depuis 2025) : on force un
+            # ordre de clients de repli qui n'ont pas besoin de PO Token
+            # côté "player", et on laisse le provider bgutil (voir
+            # requirements.txt) fournir le token GVS s'il est disponible.
+            # Voir https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+            options['extractor_args'] = {
+                'youtube': {
+                    'player_client': ['android', 'web_safari', 'web_embedded'],
+                    'player_skip': ['webpage'],
+                }
+            }
             if quality == "audio":
                 options['format'] = 'bestaudio/best'
                 options['postprocessors'] = [{
