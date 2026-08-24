@@ -346,6 +346,19 @@ class Downloader:
                 options['http_headers'] = {
                     'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
                 }
+
+
+            elif platform == "youtube":
+                # Même repli anti-bot que pour le téléchargement réel (voir
+                # _build_ytdlp_options) : sans ça, l'ANALYSE du lien (aperçu)
+                # se fait bloquer par "Sign in to confirm you're not a bot"
+                # avant même d'arriver à l'étape de téléchargement.
+                options['extractor_args'] = {
+                    'youtube': {
+                        'player_client': ['android', 'web_safari', 'web_embedded'],
+                        'player_skip': ['webpage'],
+                    }
+                }
             
             # Extraction asynchrone
             loop = asyncio.get_event_loop()
