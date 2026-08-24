@@ -143,13 +143,19 @@ WEBAPP_SECRET_KEY = os.getenv("WEBAPP_SECRET_KEY", "")
 # 50 Mo) et génère à la place un lien de téléchargement direct.
 TELEGRAM_UPLOAD_LIMIT_MB = 50
 
-# Chemin vers un ffmpeg portable (fusion audio/vidéo), indépendant de ce qui
-# est ou non installé sur la plateforme d'hébergement.
-try:
-    import imageio_ffmpeg
-    FFMPEG_LOCATION = imageio_ffmpeg.get_ffmpeg_exe()
-except Exception:
-    FFMPEG_LOCATION = None  # yt-dlp retombera sur un éventuel ffmpeg système
+# Chemin vers ffmpeg (fusion audio/vidéo). Priorité au ffmpeg SYSTÈME s'il
+# est installé (plus fiable sur certains VPS où le binaire portable peut
+# manquer des bibliothèques partagées attendues), sinon repli sur le
+# ffmpeg portable embarqué (imageio-ffmpeg), qui fonctionne partout ailleurs
+# (Render, Railway...) sans rien à installer.
+import shutil as _shutil
+FFMPEG_LOCATION = _shutil.which("ffmpeg")
+if not FFMPEG_LOCATION:
+    try:
+        import imageio_ffmpeg
+        FFMPEG_LOCATION = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        FFMPEG_LOCATION = None
 
 # ==================== SUPPORT & COMMUNAUTÉ ====================
 SUPPORT_CHANNEL = "https://t.me/connexiontoutreseaus"

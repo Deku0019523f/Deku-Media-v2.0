@@ -89,6 +89,9 @@ Les données utilisateur sont stockées à deux endroits complémentaires :
 - Un token de bot Telegram ([@BotFather](https://t.me/BotFather))
 - Un compte [Atelier](https://myateliers.store) avec une clé API (pour les paiements automatiques)
 - Un serveur avec une IP/domaine public et un port ouvert (pour recevoir les webhooks de paiement)
+- **Sur un VPS** (déjà automatisé sur Render/Railway, voir `render.yaml`) :
+  - `ffmpeg` (fusion audio/vidéo) — recommandé en paquet système : `apt install -y ffmpeg` (sinon repli automatique sur une version portable embarquée, moins fiable selon l'OS)
+  - `git`, `node` (18+) et `npm` — requis par le [provider PO Token YouTube](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) qui contourne le blocage "Sign in to confirm you're not a bot". Sans eux, le bot fonctionne quand même, juste avec moins de résistance face à YouTube.
 
 ## 🚀 Installation
 
@@ -96,11 +99,17 @@ Les données utilisateur sont stockées à deux endroits complémentaires :
 git clone https://github.com/Deku0019523f/Deku-Media-v2.0.git
 cd Deku-Media-v2.0
 
+# Dépendances système (VPS Ubuntu/Debian) :
+apt update && apt install -y ffmpeg
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt install -y nodejs
+
 python3 -m venv venv
 source venv/bin/activate
 
 pip install -r requirements.txt
 ```
+
+Au premier démarrage, le bot clone et installe automatiquement le provider PO Token dans un sous-dossier `bgutil-ytdlp-pot-provider/` (silencieusement désactivé si `git`/`node`/`npm` sont absents).
 
 ## 🔧 Configuration
 
