@@ -27,6 +27,7 @@ from config import BOT_TOKEN, ADMIN_IDS, LOG_LEVEL, LOG_FILE, WEBHOOK_SERVER_HOS
 from utils.database import db
 from utils.scheduler import bot_scheduler
 from webhook_server import run_webhook_server
+from utils import pot_provider
 
 # Handlers - Start
 from handlers.start import start_command, hide_keyboard
@@ -104,6 +105,9 @@ async def post_init(application: Application):
     logger.info("🔧 Initialisation de la base de données...")
     await db.init_database()
     logger.info("✅ Base de données initialisée")
+
+    logger.info("🍪 Démarrage du provider PO Token YouTube (bgutil)...")
+    await pot_provider.start()
 
 async def error_handler(update: Update, context):
     """Gère les erreurs globales"""
@@ -358,6 +362,7 @@ async def run_bot(application: Application):
             await asyncio.Event().wait()  # bloque jusqu'à Ctrl+C / arrêt du process
         finally:
             bot_scheduler.stop()
+            await pot_provider.stop()
             await webhook_runner.cleanup()
             await application.updater.stop()
             await application.stop()
