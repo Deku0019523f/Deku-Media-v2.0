@@ -3,7 +3,7 @@ python-telegram-bot==20.8
 python-telegram-bot[job-queue]==20.8
 
 # Téléchargement vidéos
-yt-dlp>=2025.12.08
+yt-dlp>=2026.08.19  # fix HTTP 403 android_vr (voir yt-dlp/yt-dlp#17456, corrigé le 19/08/2026)
 
 # ffmpeg portable (fusion audio/vidéo) — garantit sa présence quelle que soit
 # la plateforme d'hébergement (VPS, Render, Railway...), au lieu de dépendre
@@ -13,6 +13,10 @@ imageio-ffmpeg>=0.5.1
 # Impersonation navigateur pour yt-dlp (requis par certains extracteurs
 # anti-bot, ex: Dailymotion) — voir https://github.com/yt-dlp/yt-dlp#impersonation
 curl_cffi>=0.11
+
+# Provider de PO Token pour YouTube (contourne "Sign in to confirm you're not a bot")
+# Nécessite Deno ou Node.js dans le PATH du serveur — voir render.yaml
+bgutil-ytdlp-pot-provider>=1.2.2
 
 # Base de données
 aiosqlite>=0.20.0
