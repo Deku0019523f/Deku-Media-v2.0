@@ -3,7 +3,7 @@ services:
     name: deku-media-bot
     env: python
     plan: free
-    buildCommand: curl -fsSL https://deno.land/install.sh | sh -s -- -y && export DENO_INSTALL="$HOME/.deno" && export PATH="$DENO_INSTALL/bin:$PATH" && pip install -r requirements.txt
+    buildCommand: curl -fsSL https://deno.land/install.sh | sh -s -- -y && export DENO_INSTALL="$HOME/.deno" && export PATH="$DENO_INSTALL/bin:$PATH" && (command -v node >/dev/null 2>&1 || (curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs)) && pip install -r requirements.txt
     startCommand: export PATH="$HOME/.deno/bin:$PATH" && python -u bot.py
     healthCheckPath: /health
     envVars:
